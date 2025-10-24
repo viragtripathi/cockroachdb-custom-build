@@ -14,3 +14,7 @@ Dockerfile.runtime
 *.swp
 .vscode/
 .idea/
+
+# Backups
+*-OLD.md
+*.old

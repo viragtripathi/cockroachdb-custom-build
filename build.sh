@@ -7,8 +7,8 @@ RUNTIME_BASE_IMAGE="${RUNTIME_BASE_IMAGE:-ubuntu:22.04}"  # custom base
 
 rm -rf out cockroach Dockerfile.runtime && mkdir -p out
 
-# 1) Builder image
-docker build -f Dockerfile.builder -t crdb-builder:local .
+# 1) Builder image (use Ubuntu 20.04 for glibc 2.31 compatibility with Kerberos)
+docker build -f Dockerfile.builder.ubuntu20 -t crdb-builder:local .
 
 # 2) Source checkout
 git clone --depth 1 --branch "${CRDB_VERSION}" https://github.com/cockroachdb/cockroach.git
