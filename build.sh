@@ -31,18 +31,19 @@ docker run --rm -t \
     # Optional: prefetch deps for repeatable builds
     # bazel fetch //pkg/cmd/cockroach:cockroach //pkg:all_tests
 
-    # Build geos + chosen binary
+    # Build libgeos + chosen binary
     if [[ "'"${WITH_UI}"'" == "1" ]]; then
-      bazel build //pkg/cmd/cockroach:cockroach //pkg/cmd/geos:geos
+      bazel build //pkg/cmd/cockroach:cockroach //c-deps:libgeos
       cp -v bazel-bin/pkg/cmd/cockroach/cockroach_/cockroach /work/out/
     else
-      bazel build //pkg/cmd/cockroach-short:cockroach-short //pkg/cmd/geos:geos
+      bazel build //pkg/cmd/cockroach-short:cockroach-short //c-deps:libgeos
       cp -v bazel-bin/pkg/cmd/cockroach-short/cockroach-short_/cockroach-short /work/out/
     fi
 
     # Copy GEOS shared libs for runtime
     mkdir -p /work/out/geos
-    rsync -a bazel-bin/pkg/cmd/geos/ /work/out/geos/ --include="*/" --include="*.so*" --exclude="*"
+    rsync -a c-deps/libgeos/lib/ /work/out/geos/ --include="*.so*" --exclude="*" 2>/dev/null || true
+    rsync -a bazel-bin/c-deps/ /work/out/geos/ --include="*.so*" --exclude="*" 2>/dev/null || true
 
     # Licenses for the runtime image
     rsync -a licenses /work/out/licenses
