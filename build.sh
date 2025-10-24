@@ -34,16 +34,16 @@ docker run --rm -t \
     # Build libgeos + chosen binary
     if [[ "'"${WITH_UI}"'" == "1" ]]; then
       bazel build //pkg/cmd/cockroach:cockroach //c-deps:libgeos
-      cp -v bazel-bin/pkg/cmd/cockroach/cockroach_/cockroach /work/out/
+      # Find and copy the binary (handle both symlink and full path)
+      find ~/.cache/bazel -name "cockroach" -type f -executable 2>/dev/null | grep "pkg/cmd/cockroach/cockroach_/cockroach" | head -1 | xargs -I {} cp -v {} /work/out/cockroach
     else
       bazel build //pkg/cmd/cockroach-short:cockroach-short //c-deps:libgeos
-      cp -v bazel-bin/pkg/cmd/cockroach-short/cockroach-short_/cockroach-short /work/out/
+      find ~/.cache/bazel -name "cockroach-short" -type f -executable 2>/dev/null | grep "cockroach-short_/cockroach-short" | head -1 | xargs -I {} cp -v {} /work/out/cockroach-short
     fi
 
     # Copy GEOS shared libs for runtime
     mkdir -p /work/out/geos
-    rsync -a c-deps/libgeos/lib/ /work/out/geos/ --include="*.so*" --exclude="*" 2>/dev/null || true
-    rsync -a bazel-bin/c-deps/ /work/out/geos/ --include="*.so*" --exclude="*" 2>/dev/null || true
+    find ~/.cache/bazel -path "*/c-deps/*" -name "*.so*" -type f 2>/dev/null | xargs -I {} cp -v {} /work/out/geos/ 2>/dev/null || true
 
     # Licenses for the runtime image
     rsync -a licenses /work/out/licenses
