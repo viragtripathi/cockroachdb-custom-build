@@ -6,6 +6,8 @@ WITH_UI="${WITH_UI:-1}"                             # 1 = full UI; 0 = cockroach
 RUNTIME_BASE_IMAGE="${RUNTIME_BASE_IMAGE:-ubuntu:22.04}"  # custom base
 
 rm -rf out cockroach Dockerfile.runtime && mkdir -p out
+# Ensure out/ is writable by the builder user (UID 10001) inside container
+chmod 777 out/
 
 # 1) Builder image (use Ubuntu 20.04 for glibc 2.31 compatibility with Kerberos)
 docker build -f Dockerfile.builder.ubuntu20 -t crdb-builder:local .
