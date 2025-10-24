@@ -66,16 +66,6 @@ WITH_UI=0 ./build.sh  # Skip UI
 
 Check: `docker inspect crdb-runtime:v25.3.0 | grep Architecture`
 
-## Files
-
-- `build.sh` - Production x86_64 builds
-- `build-mac.sh` - Development ARM64 builds  
-- `Dockerfile.builder` - x86_64 builder image
-- `Dockerfile.builder.arm64` - ARM64 builder image
-- `README.md` - This file
-- `TROUBLESHOOTING.md` - Detailed problem solving
-- `PLATFORM-NOTES.md` - ARM64 Mac context
-
 ## More Help
 
 - CockroachDB issues: https://github.com/cockroachdb/cockroach/discussions
