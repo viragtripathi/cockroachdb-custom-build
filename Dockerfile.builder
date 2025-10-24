@@ -1,0 +1,40 @@
+FROM ubuntu:22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+ARG GO_VERSION=1.23.12
+
+# Non-root build user: Bazel/dev tools should not run as root
+RUN useradd -m -u 10001 builder
+
+# Base deps for CockroachDB + Bazel build
+# Using --allow-unauthenticated as workaround for Podman GPG issues on macOS
+# In production, Verizon should use their signed repos
+RUN apt-get update --allow-insecure-repositories || apt-get update && \
+    apt-get install -y --no-install-recommends --allow-unauthenticated \
+    ca-certificates curl git build-essential clang lld llvm \
+    python3 python3-venv python3-distutils pkg-config \
+    zip unzip rsync cmake \
+ && rm -rf /var/lib/apt/lists/*
+
+# Node.js 20 LTS (Ubuntu 22.04 ships with old Node 12)
+# Install from official Node.js binaries to avoid repository GPG issues
+RUN curl -fsSL https://nodejs.org/dist/v20.18.0/node-v20.18.0-linux-x64.tar.xz -o /tmp/node.tar.xz && \
+    tar -C /usr/local --strip-components=1 -xJf /tmp/node.tar.xz && \
+    rm /tmp/node.tar.xz
+
+# Yarn (some Bazel UI rules still expect it)
+RUN npm install -g yarn
+
+# Bazelisk (reads .bazelversion from the repo)
+RUN curl -fsSL https://github.com/bazelbuild/bazelisk/releases/latest/download/bazelisk-linux-amd64 \
+    -o /usr/local/bin/bazel && chmod +x /usr/local/bin/bazel
+
+# Go 1.23.12 to match cockroach/go.mod
+RUN curl -fsSL https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz -o /tmp/go.tgz \
+ && tar -C /usr/local -xzf /tmp/go.tgz && rm /tmp/go.tgz
+ENV PATH="/usr/local/go/bin:${PATH}"
+
+WORKDIR /work
+USER builder
+CMD ["/bin/bash"]
+

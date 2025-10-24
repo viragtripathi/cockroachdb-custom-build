@@ -1,0 +1,16 @@
+# Build artifacts
+out/
+cockroach/
+*.log
+Dockerfile.runtime
+
+# Bazel cache
+.bazel-cache/
+
+# macOS
+.DS_Store
+
+# Editor
+*.swp
+.vscode/
+.idea/
