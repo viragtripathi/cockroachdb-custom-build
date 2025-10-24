@@ -48,28 +48,6 @@ RUNTIME_BASE_IMAGE="ubuntu:22.04" # Your approved base OS
 CRDB_VERSION="v24.3.0" WITH_UI=0 RUNTIME_BASE_IMAGE="rockylinux:9" ./build.sh
 ```
 
-## What You Get
-
-```
-Runtime Image:
-├── /cockroach/cockroach    # Binary (~150MB)
-├── /cockroach/libgeos/     # Spatial libraries
-└── /cockroach/licenses/    # License files
-
-Size: ~300-500MB (depends on base OS)
-User: roach (UID 10001, non-root)
-```
-
-## Build Times
-
-| Build Type | x86_64 Linux | ARM64 Mac |
-|------------|--------------|-----------|
-| With UI | 25-35 min | 25-35 min |
-| Without UI | 15-20 min | 15-20 min |
-| Cached | 2-5 min | 2-5 min |
-
-*8-core machine, first build*
-
 ## Common Issues
 
 ### "Out of memory"
@@ -100,10 +78,10 @@ Check: `docker inspect crdb-runtime:v25.3.0 | grep Architecture`
 
 ## More Help
 
-- Detailed docs: See `TROUBLESHOOTING.md` and `PLATFORM-NOTES.md`
 - CockroachDB issues: https://github.com/cockroachdb/cockroach/discussions
-- Community: https://forum.cockroachlabs.com
 
 ## License
 
-MIT (or your choice) - See LICENSE file
+This build recipe is licensed under the MIT License - see [LICENSE](LICENSE) file.
+
+**Note:** CockroachDB itself is licensed under the Business Source License 1.1 and/or Apache License 2.0. This MIT license only applies to the build scripts and documentation in this repository.

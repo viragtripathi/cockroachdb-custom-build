@@ -8,7 +8,7 @@ RUN useradd -m -u 10001 builder
 
 # Base deps for CockroachDB + Bazel build
 # Using --allow-unauthenticated as workaround for Podman GPG issues on macOS
-# In production, Verizon should use their signed repos
+# In production, user should use their signed repos
 RUN apt-get update --allow-insecure-repositories || apt-get update && \
     apt-get install -y --no-install-recommends --allow-unauthenticated \
     ca-certificates curl git build-essential clang lld llvm \

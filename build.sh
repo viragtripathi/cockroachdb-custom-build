@@ -3,7 +3,7 @@ set -euo pipefail
 
 CRDB_VERSION="${CRDB_VERSION:-v25.3.0}"             # pin the tag/branch you want
 WITH_UI="${WITH_UI:-1}"                             # 1 = full UI; 0 = cockroach-short
-RUNTIME_BASE_IMAGE="${RUNTIME_BASE_IMAGE:-ubuntu:22.04}"  # Verizon-approved base
+RUNTIME_BASE_IMAGE="${RUNTIME_BASE_IMAGE:-ubuntu:22.04}"  # custom base
 
 rm -rf out cockroach Dockerfile.runtime && mkdir -p out
 
