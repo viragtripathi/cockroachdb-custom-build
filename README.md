@@ -10,6 +10,17 @@ Official CockroachDB images use a fixed Ubuntu base that may not pass your secur
 - ✅ Run as **non-root** (UID 10001)
 - ✅ Pass **security scans** with your approved base
 
+## ⚠️ Important Disclaimer
+
+**This repository provides guidelines for building custom CockroachDB binaries from source. Please note:**
+
+- This is **for reference and educational purposes** - you are solely responsible for any builds you create and deploy
+- **For CockroachDB enterprise customers:** Always consult with your CockroachDB account team before using custom builds in production environments to ensure this approach is approved and will be supported
+- Custom builds may affect your support agreement and warranty
+- Ensure you comply with CockroachDB's licensing terms (Business Source License 1.1 / Apache 2.0)
+
+**Use at your own risk.** The maintainers of this repository are not responsible for any issues arising from custom builds.
+
 ## Prerequisites
 
 ### Docker or Podman
