@@ -10,6 +10,40 @@ Official CockroachDB images use a fixed Ubuntu base that may not pass your secur
 - ✅ Run as **non-root** (UID 10001)
 - ✅ Pass **security scans** with your approved base
 
+## Prerequisites
+
+### Docker or Podman
+
+You need either:
+- **Docker Desktop** (Linux/Mac/Windows), or
+- **Podman Desktop** with `podman-compose`
+
+#### If using Podman
+
+Create symlinks so scripts can use `docker` commands:
+
+```bash
+sudo ln -s $(which podman) /usr/local/bin/docker
+sudo ln -s $(which podman-compose) /usr/local/bin/docker-compose
+```
+
+### Docker Permissions Issue (Linux)
+
+If you get permission errors like `Cannot connect to the Docker daemon socket at /var/run/docker.sock`, add your user to the docker group:
+
+```bash
+# Add your user to the docker group
+sudo usermod -aG docker "$USER"
+
+# Refresh group membership in current shell (or log out/in)
+newgrp docker
+
+# Verify access
+docker info
+```
+
+This lets you run Docker without `sudo`.
+
 ## Quick Start
 
 ### On x86_64 Linux (Production)
