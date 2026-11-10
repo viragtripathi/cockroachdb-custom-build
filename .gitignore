@@ -1,11 +1,8 @@
-# Build artifacts
+# Build outputs
 out/
 cockroach/
+.downloads/
 *.log
-Dockerfile.runtime
-
-# Bazel cache
-.bazel-cache/
 
 # macOS
 .DS_Store

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Weekly, to catch base image or package manager changes that break the recipe.
+    - cron: "17 6 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: shellcheck
+        run: shellcheck build.sh smoke-test.sh scan.sh cockroach.sh
+      - name: hadolint
+        run: |
+          for f in Dockerfile Dockerfile.builder; do
+            docker run --rm -i docker.io/hadolint/hadolint:v2.15.1 hadolint - < "$f"
+          done
+
+  image:
+    needs: lint
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        base:
+          - registry.access.redhat.com/ubi10/ubi-minimal:latest
+          - registry.access.redhat.com/ubi9/ubi-minimal:latest
+          - public.ecr.aws/amazonlinux/amazonlinux:2023-minimal
+          - docker.io/library/debian:trixie-slim
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and smoke test
+        env:
+          RUNTIME_BASE_IMAGE: ${{ matrix.base }}
+          TARGET_ARCH: amd64
+          IMAGE: crdb-runtime:ci
+        run: ./build.sh
+      - name: Scan
+        run: ./scan.sh crdb-runtime:ci
