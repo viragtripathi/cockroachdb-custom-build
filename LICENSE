@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2025 CockroachDB Custom Build Contributors
+Copyright (c) 2025-2026 CockroachDB Custom Build Contributors
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -23,6 +23,7 @@ SOFTWARE.
 ---
 
 NOTE: This license applies to the build scripts and documentation in this
-repository only. CockroachDB itself is licensed separately under the Business
-Source License 1.1 and/or Apache License 2.0. See:
-https://github.com/cockroachdb/cockroach/blob/master/LICENSE
+repository only. CockroachDB itself is licensed separately: version 24.3 and
+later under the CockroachDB Software License, earlier versions under the
+Business Source License 1.1 and the Apache License 2.0. See:
+https://www.cockroachlabs.com/cockroachdb-software-license/
