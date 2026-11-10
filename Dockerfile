@@ -94,7 +94,7 @@ RUN set -eu; \
 # process cannot replace the binary or the entrypoint.
 RUN set -eu; \
     if ! grep -q '^[^:]*:[^:]*:10001:' /etc/passwd; then \
-      echo 'roach:x:10001:0:CockroachDB:/cockroach:/sbin/nologin' >> /etc/passwd; \
+      echo 'roach:x:10001:0:CockroachDB:/tmp:/sbin/nologin' >> /etc/passwd; \
     fi; \
     mkdir -p /cockroach/cockroach-data /usr/local/lib/cockroach /licenses; \
     chown 10001:0 /cockroach/cockroach-data; \

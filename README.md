@@ -84,7 +84,7 @@ Any glibc-based image with `microdnf`, `dnf`, `yum` or `apt-get` works. Each of 
 | Amazon Linux 2 | `docker.io/library/amazonlinux:2` | Builds, but Amazon Linux 2 reached end of support on 2026-06-30. Use Amazon Linux 2023. |
 | Your approved image | `registry.example.com/approved/base:tag` | Mirror it in your registry and set `RUNTIME_BASE_IMAGE`. |
 
-Use fully qualified image names as shown: Podman on RHEL and Fedora refuses short names such as `ubuntu:24.04` when it can't prompt.
+Use fully qualified image names as shown: Podman on RHEL and Fedora refuses short names such as `rockylinux/rockylinux:9-minimal` when it can't prompt.
 
 Alpine is not supported: the CockroachDB binary needs glibc 2.17 or newer and Alpine uses musl.
 
@@ -110,7 +110,7 @@ Everything is set through environment variables. On/off settings take `0` or `1`
 | `CRDB_SHA256` | | Expected SHA-256 of the tarball. Without it, the script reads `<tarball>.sha256sum` next to the file, or downloads it from `CRDB_DOWNLOAD_URL`. |
 | `CRDB_REPO_URL` | `https://github.com/cockroachlabs/cockroach.git` | Source repository (source mode). |
 | `WITH_UI` | `1` | Source mode: `0` builds `cockroach-short`, without the DB Console. |
-| `BUILDER_BASE_IMAGE` | `ubuntu:24.04` | Source mode: base of the builder image. |
+| `BUILDER_BASE_IMAGE` | `docker.io/library/ubuntu:24.04` | Source mode: base of the builder image. |
 | `BAZEL_CACHE_VOLUME` | `crdb-bazel-cache` | Source mode: named volume that keeps Bazel's caches between builds. Empty disables it. |
 | `BAZEL_EXTRA_FLAGS` | | Source mode: extra Bazel flags, for example `--jobs=4`. |
 
@@ -148,7 +148,8 @@ If `COCKROACH_ARGS` is set, it replaces the arguments. One thing is left out: th
 
 The official image runs as root by default; this one doesn't. The CockroachDB Helm chart and Operator already set a pod security context, so they need no changes. If you run CockroachDB from your own manifests or compose files, check these before switching an existing cluster:
 
-- The data volume must be writable by the pod's user. Setting `securityContext.fsGroup` (any group ID) makes Kubernetes give the volume to that group and add the group to the pod's user. Data written by the official image is owned by root, so for an existing volume use `fsGroup`, or `chown` it once with an init container.
+- The data volume must be writable by the pod's user. Setting `securityContext.fsGroup` (any group ID) makes Kubernetes give the volume to that group and add the group to the pod's user. Data written by the official image is owned by root, so for an existing volume use `fsGroup`, or `chown` it once with an init container. Add `fsGroupChangePolicy: OnRootMismatch` so a large store isn't re-chowned on every restart.
+- With Docker Compose or `docker run`, there is no `fsGroup`: `chown -R 10001:0` an existing data directory once, or run the container with `user: "0"`.
 - CockroachDB only accepts a group-readable key file if root owns it and its group is the process's primary group. For keys mounted from a Secret, either set `runAsGroup` to the same ID as `fsGroup` and use `defaultMode: 0440`, or copy the keys into an `emptyDir` with an init container that runs as the pod's user and sets mode 0400. The Helm chart does the latter.
 - To keep the old behavior while you migrate, you can run the image as root with `runAsUser: 0`, at the cost of the non-root default.
 

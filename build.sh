@@ -28,7 +28,7 @@ CRDB_SHA256="${CRDB_SHA256:-}"
 # BUILD_MODE=source
 CRDB_REPO_URL="${CRDB_REPO_URL:-https://github.com/cockroachlabs/cockroach.git}"
 WITH_UI="${WITH_UI:-1}"
-BUILDER_BASE_IMAGE="${BUILDER_BASE_IMAGE:-ubuntu:24.04}"
+BUILDER_BASE_IMAGE="${BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04}"
 BAZEL_CACHE_VOLUME="${BAZEL_CACHE_VOLUME-crdb-bazel-cache}" # set to "" to disable the cache
 BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS:-}"
 
@@ -72,11 +72,16 @@ fi
 
 BUILD_CONTAINER=""
 STAGING_DIR=""
+CANDIDATE=""
 cleanup() {
+  if [[ -n "$CANDIDATE" ]]; then "$CONTAINER_CLI" rmi -f "$CANDIDATE" >/dev/null 2>&1 || true; fi
   if [[ -n "$BUILD_CONTAINER" ]]; then "$CONTAINER_CLI" rm -f "$BUILD_CONTAINER" >/dev/null 2>&1 || true; fi
   if [[ -n "$STAGING_DIR" ]]; then rm -rf "$STAGING_DIR"; fi
 }
 trap cleanup EXIT
+# Turn Ctrl-C and SIGTERM into a normal exit so the EXIT trap cleans up.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 sha256_of() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -103,7 +108,7 @@ stage_release() {
     for f in "$name" "$name.sha256sum"; do
       [[ -s ".downloads/$f" ]] && continue
       log "Downloading $(redact "$CRDB_DOWNLOAD_URL")/$f"
-      if ! curl -fSL --retry 3 -o ".downloads/$f.part" "$CRDB_DOWNLOAD_URL/$f"; then
+      if ! curl -fSL --retry 3 --netrc-optional -o ".downloads/$f.part" "$CRDB_DOWNLOAD_URL/$f"; then
         rm -f ".downloads/$f.part"
         die "could not download $(redact "$CRDB_DOWNLOAD_URL")/$f. Check CRDB_VERSION" \
           "(release tags look like v26.2.11) and your network or proxy settings."
@@ -118,7 +123,7 @@ stage_release() {
     expected="$(awk '{print $1}' "$tarball.sha256sum")"
   fi
   if [[ -z "$expected" ]]; then
-    expected="$(curl -fsSL --retry 3 "$CRDB_DOWNLOAD_URL/$name.sha256sum" | awk '{print $1}')" ||
+    expected="$(curl -fsSL --retry 3 --netrc-optional "$CRDB_DOWNLOAD_URL/$name.sha256sum" | awk '{print $1}')" ||
       die "could not fetch $(redact "$CRDB_DOWNLOAD_URL")/$name.sha256sum; set CRDB_SHA256"
   fi
   expected="$(printf '%s' "$expected" | tr '[:upper:]' '[:lower:]')"
@@ -237,16 +242,17 @@ install -m 0755 cockroach.sh out/cockroach.sh
 
 if [[ "$SMOKE_TEST" == 1 || ("$SMOKE_TEST" == auto && "$TARGET_ARCH" == "$HOST_ARCH") ]]; then
   # Build under a temporary name and apply IMAGE only once the smoke test passes.
-  candidate="crdb-runtime-candidate:$$"
-  build_image "$candidate"
-  smoke_args=("$candidate")
+  # Unique even when CI jobs in separate containers share one Docker daemon.
+  CANDIDATE="crdb-runtime-candidate:$$-$RANDOM-$(date +%s)"
+  build_image "$CANDIDATE"
+  smoke_args=("$CANDIDATE")
   if is_release_tag "$CRDB_VERSION"; then smoke_args+=("$CRDB_VERSION"); fi
   if ! CONTAINER_CLI="$CONTAINER_CLI" ./smoke-test.sh "${smoke_args[@]}"; then
-    "$CONTAINER_CLI" rmi -f "$candidate" >/dev/null 2>&1 || true
     die "the smoke test failed, so $IMAGE was not tagged"
   fi
-  "$CONTAINER_CLI" tag "$candidate" "$IMAGE"
-  "$CONTAINER_CLI" rmi "$candidate" >/dev/null
+  "$CONTAINER_CLI" tag "$CANDIDATE" "$IMAGE"
+  "$CONTAINER_CLI" rmi "$CANDIDATE" >/dev/null
+  CANDIDATE=""
 else
   if [[ "$SMOKE_TEST" == auto ]]; then
     log "Skipping the smoke test of a $TARGET_ARCH image on a $HOST_ARCH host (SMOKE_TEST=1 runs it under emulation)"

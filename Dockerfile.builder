@@ -7,7 +7,7 @@
 # The image runs natively on amd64 and arm64 hosts and can target either
 # architecture.
 
-ARG BUILDER_BASE_IMAGE=ubuntu:24.04
+ARG BUILDER_BASE_IMAGE=docker.io/library/ubuntu:24.04
 FROM ${BUILDER_BASE_IMAGE}
 
 ARG DEBIAN_FRONTEND=noninteractive

@@ -23,6 +23,9 @@ fi
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
+# Turn Ctrl-C and SIGTERM into a normal exit so the EXIT trap cleans up.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 "$CONTAINER_CLI" save -o "$work/image.tar" "$IMAGE" >/dev/null
 
 trivy_env=()
@@ -37,12 +40,12 @@ done < <(env)
 # which SELinux, remote Docker hosts and some Docker setups don't allow.
 trivy_image() {
   if command -v trivy >/dev/null 2>&1; then
-    trivy image --quiet --scanners vuln --input "$work/image.tar" "$@"
+    trivy image --quiet --scanners vuln --exit-code 0 --output /dev/stdout --input "$work/image.tar" "$@"
     return
   fi
   local cid="" status=0
   cid="$("$CONTAINER_CLI" create ${trivy_env[@]+"${trivy_env[@]}"} -v trivy-cache:/root/.cache \
-    "$TRIVY_IMAGE" image --quiet --scanners vuln --input /tmp/image.tar "$@")" || true
+    "$TRIVY_IMAGE" image --quiet --scanners vuln --exit-code 0 --output /dev/stdout --input /tmp/image.tar "$@")" || true
   # Never pass an empty name to rm: Podman treats `rm ""` and `rmi ""` as "all".
   if [[ -z "$cid" ]]; then
     echo "ERROR: could not create a container from $TRIVY_IMAGE" >&2
@@ -70,12 +73,12 @@ if [[ -z "$os_family" ]]; then
 fi
 echo "$os_family: $os_fixable"
 if ((os_fixable > 0)); then
-  trivy_image --skip-db-update --pkg-types os --ignore-unfixed --severity "$SEVERITY"
+  trivy_image --skip-db-update --format table --pkg-types os --ignore-unfixed --severity "$SEVERITY"
 fi
 
 echo
 echo "== CockroachDB binary: findings ($SEVERITY), fixed by newer CockroachDB releases =="
-trivy_image --skip-db-update --pkg-types library --severity "$SEVERITY"
+trivy_image --skip-db-update --format table --pkg-types library --severity "$SEVERITY"
 
 echo
 if ((os_fixable > 0)); then

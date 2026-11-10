@@ -40,6 +40,9 @@ expect() {
 
 cleanup() { "$CLI" rm -f "$NAME" >/dev/null 2>&1 || true; }
 trap cleanup EXIT
+# Turn Ctrl-C and SIGTERM into a normal exit so the EXIT trap cleans up.
+trap 'exit 130' INT
+trap 'exit 143' TERM
 
 platform="$("$CLI" image inspect --format '{{.Os}}/{{.Architecture}}' "$IMAGE")"
 run() { "$CLI" run --rm --platform "$platform" "$@"; }
