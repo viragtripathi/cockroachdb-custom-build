@@ -14,6 +14,8 @@ Rebuilding on a current base fixes those, and that's what this recipe does:
 - The image has the same file layout and entrypoint arguments as the official one, but runs as non-root UID 10001. The CockroachDB Helm chart and Operator work with it unchanged; for your own manifests, see [Moving from the official image](#moving-from-the-official-image).
 - `smoke-test.sh` starts the image and tests SQL, spatial functions, time zones, the Helm entrypoint and file permissions. `scan.sh` fails if any OS package has a fix available.
 
+If your policies let you build on top of the official image, Cockroach Labs documents how to [update its OS packages](https://docs.cockroachlabs.com/docs/v26.3/update-docker-image-os-packages) and also publishes Ubuntu 24.04 images (`-noble` tags, for v25.4 and later). This recipe is for when you must use your own base image, or can't pull images from outside your network.
+
 ## Disclaimer
 
 This repository is a reference recipe. You are responsible for the images you build and run with it.
@@ -31,7 +33,7 @@ You need Docker or Podman and `curl` (plus `git` for source builds). Linux and m
 git clone https://github.com/viragtripathi/cockroachdb-custom-build.git
 cd cockroachdb-custom-build
 
-# CockroachDB v26.2.11 on UBI 10 minimal, for this machine's architecture
+# CockroachDB v26.3.5 on UBI 10 minimal, for this machine's architecture
 ./build.sh
 
 # For x86_64 clusters, on your approved base image
@@ -43,32 +45,41 @@ TARGET_ARCH=amd64 RUNTIME_BASE_IMAGE=registry.example.com/approved/base:latest .
 Building for the other architecture (for example amd64 on an arm64 machine) runs the base image's package manager under emulation. Docker Desktop and Podman on macOS handle that out of the box. On Linux, register QEMU first, for example with `docker run --privileged --rm tonistiigi/binfmt --install all` or the `qemu-user-static` package.
 
 ```bash
-./scan.sh crdb-runtime:v26.2.11      # exits 1 if an OS package has a fix available
+./scan.sh crdb-runtime:v26.3.5      # exits 1 if an OS package has a fix available
 
 # Push it, for example to Amazon ECR
 aws ecr get-login-password --region us-east-1 |
   docker login --username AWS --password-stdin 123456789012.dkr.ecr.us-east-1.amazonaws.com
-docker tag crdb-runtime:v26.2.11 123456789012.dkr.ecr.us-east-1.amazonaws.com/cockroachdb:v26.2.11
-docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/cockroachdb:v26.2.11
+docker tag crdb-runtime:v26.3.5 123456789012.dkr.ecr.us-east-1.amazonaws.com/cockroachdb:v26.3.5
+docker push 123456789012.dkr.ecr.us-east-1.amazonaws.com/cockroachdb:v26.3.5
 ```
 
 Pin `CRDB_VERSION` to the release your cluster runs, for example `CRDB_VERSION=v25.2.27`.
 
 ## What the scans show
 
-Trivy 0.76.2 on 2026-11-09, CockroachDB v26.2.11, linux/amd64, all severities:
+Trivy 0.76.2 on 2026-11-10, CockroachDB v26.3.5, linux/amd64, all severities:
 
 | Base image | OS findings with a fix | OS findings without a fix yet | CockroachDB binary | Total |
 |---|---|---|---|---|
-| UBI 10 minimal (default) | 0 | 0 | 14 (4 high) | 14 |
-| Amazon Linux 2023, minimal or standard | 0 | 0 | 14 (4 high) | 14 |
-| UBI 9 minimal | 0 | 218 | 14 (4 high) | 232 |
-| Amazon Linux 2023 image from August 2025 | 0 | 0 | 14 (4 high) | 14 |
-| Same August 2025 base, `APPLY_OS_UPDATES=0` | 370 (252 high) | 0 | 14 (4 high) | 384 |
+| UBI 10 minimal (default) | 0 | 0 | 0 | 0 |
+| Amazon Linux 2023, minimal or standard | 0 | 0 | 0 | 0 |
+| UBI 9 minimal | 0 | 218 | 0 | 218 |
+| Amazon Linux 2023 image from August 2025 | 0 | 0 | 0 | 0 |
+| Same August 2025 base, `APPLY_OS_UPDATES=0` | 370 (252 high) | 0 | 0 | 370 |
 
 The last two rows are why the build applies OS updates: a base image that is a few months old carries hundreds of packages whose fixes were never installed.
 
-The binary findings are Go standard library CVEs compiled into CockroachDB, so rebuilding the image cannot remove them. Only a CockroachDB release built with a newer Go can. v26.2.11 is built with Go 1.25.13; its 4 high findings are fixed in Go 1.26.10 and later. The latest v25.2 release, v25.2.27, is built with Go 1.23.12 and has 59 binary findings (1 critical, 25 high). If your scanning policy covers application binaries, plan for the newest release line; see [Upgrade CockroachDB](https://www.cockroachlabs.com/docs/stable/upgrade-cockroach-version).
+The binary column depends on the CockroachDB release, not on this recipe. Scanners flag Go standard library CVEs compiled into the binary, and only a release built with a newer Go removes them. The latest patch of each supported release line, scanned the same way:
+
+| Release line | Latest patch | Support | Go | Binary findings |
+|---|---|---|---|---|
+| v26.3 | v26.3.5 | Innovation, until 2027-02-19 | 1.26.10 | 0 |
+| v26.2 | v26.2.11 | LTS | 1.25.13 | 14 (4 high) |
+| v25.4 | v25.4.20 | LTS | 1.23.12 | 59 (1 critical, 25 high) |
+| v25.2 | v25.2.27 | LTS | 1.23.12 | 59 (1 critical, 25 high) |
+
+v26.3 is an Innovation release with no LTS patches; its next stop is v26.4. If your scanning policy covers application binaries, weigh that against the findings on the LTS lines. See the [release support policy](https://docs.cockroachlabs.com/docs/releases/release-support-policy) and [Upgrade CockroachDB](https://docs.cockroachlabs.com/docs/stable/upgrade-cockroach-version).
 
 ## Choosing a base image
 
@@ -96,7 +107,7 @@ Everything is set through environment variables. On/off settings take `0` or `1`
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CRDB_VERSION` | `v26.2.11` | CockroachDB release tag. Release mode needs a tag such as `v26.2.11`; source mode also accepts a branch. |
+| `CRDB_VERSION` | `v26.3.5` | CockroachDB release tag. Release mode needs a tag such as `v26.3.5`; source mode also accepts a branch. |
 | `RUNTIME_BASE_IMAGE` | `registry.access.redhat.com/ubi10/ubi-minimal:latest` | Base image. |
 | `TARGET_ARCH` | this machine's | `amd64` or `arm64`. |
 | `IMAGE` | `crdb-runtime:$CRDB_VERSION` | Name of the image to build. |
@@ -113,6 +124,7 @@ Everything is set through environment variables. On/off settings take `0` or `1`
 | `BUILDER_BASE_IMAGE` | `docker.io/library/ubuntu:24.04` | Source mode: base of the builder image. |
 | `BAZEL_CACHE_VOLUME` | `crdb-bazel-cache` | Source mode: named volume that keeps Bazel's caches between builds. Empty disables it. |
 | `BAZEL_EXTRA_FLAGS` | | Source mode: extra Bazel flags, for example `--jobs=4`. |
+| `BAZEL_STORAGE_ACCESS_TOKEN` | | Source mode, v26.3 and later: Google Cloud access token for Cockroach Labs' private Go dependency mirror. |
 
 `scan.sh` reads two settings of its own: `SEVERITY` (default: all severities) narrows which OS findings fail the scan, and `TRIVY_IMAGE` (default `docker.io/aquasec/trivy:0.76.2`) picks the scanner image. It passes any `TRIVY_*` variables on to Trivy.
 
@@ -171,8 +183,8 @@ jobs:
   image:
     runs-on: ubuntu-latest
     env:
-      CRDB_VERSION: v26.2.11
-      IMAGE: registry.example.com/cockroachdb:v26.2.11
+      CRDB_VERSION: v26.3.5
+      IMAGE: registry.example.com/cockroachdb:v26.3.5
     steps:
       - uses: actions/checkout@v7
       # Log in to your registry first if the base image is private.
@@ -198,11 +210,11 @@ For an air-gapped build host:
 
 ```bash
 # On a machine with internet access
-curl -fLO https://binaries.cockroachdb.com/cockroach-v26.2.11.linux-amd64.tgz
-curl -fLO https://binaries.cockroachdb.com/cockroach-v26.2.11.linux-amd64.tgz.sha256sum
+curl -fLO https://binaries.cockroachdb.com/cockroach-v26.3.5.linux-amd64.tgz
+curl -fLO https://binaries.cockroachdb.com/cockroach-v26.3.5.linux-amd64.tgz.sha256sum
 
 # Copy both files to the build host, then
-CRDB_TARBALL=./cockroach-v26.2.11.linux-amd64.tgz TARGET_ARCH=amd64 \
+CRDB_TARBALL=./cockroach-v26.3.5.linux-amd64.tgz TARGET_ARCH=amd64 \
   RUNTIME_BASE_IMAGE=registry.example.com/approved/base:latest ./build.sh
 ```
 
@@ -218,12 +230,13 @@ Behind a proxy, `curl` reads `HTTPS_PROXY`, and the image build uses your contai
 
 - Bazel downloads hermetic cross-compilers, so any amd64 or arm64 host can compile either architecture. An Apple Silicon Mac compiles production x86_64 binaries without emulation; only the runtime image's package step runs emulated.
 - Optimized, profile-guided build, with the C dependencies (GEOS, PROJ, krb5, jemalloc) compiled from source.
-- Stamped as a release build of the tag, so `cockroach version` reports `v26.2.11` and `Build Type: release`. The build channel is `source-build`, which keeps custom binaries out of Cockroach Labs' crash reporting.
+- Stamped as a release build of the tag, so `cockroach version` reports the release version and `Build Type: release`. The build channel is `source-build`, which keeps custom binaries out of Cockroach Labs' crash reporting.
 
 Requirements:
 
 - Read access to the CockroachDB source, which now lives in a private repository, `github.com/cockroachlabs/cockroach`. The clone runs on the host with your git credentials (for example after `gh auth login`). Point `CRDB_REPO_URL` at a mirror if you have one; without access, use the default release mode.
 - Network access to github.com and storage.googleapis.com, where Bazel fetches its toolchains and dependencies.
+- For v26.3 and later, a Google Cloud access token that can read Cockroach Labs' private Go dependency mirror, in `BAZEL_STORAGE_ACCESS_TOKEN` (for example `BAZEL_STORAGE_ACCESS_TOKEN="$(gcloud auth application-default print-access-token)"`). `build.sh` passes it to the source's Bazel credential helper and stops early with an explanation if it's missing. Releases up to v26.2 use a public mirror and don't need it.
 - Enough resources. Testing used a 10-CPU, 20 GB container VM, and a full build used about 15 GB of disk (13 GB of Bazel cache plus a 1 GB source checkout). On macOS, give the Docker or Podman VM at least that much.
 
 ```bash
@@ -252,4 +265,4 @@ Podman works as is: `build.sh` uses it when `docker` isn't installed, and `CONTA
 
 The scripts and documentation in this repository are MIT licensed; see [LICENSE](LICENSE).
 
-CockroachDB is licensed separately. Version 24.3 and later use the [CockroachDB Software License](https://www.cockroachlabs.com/cockroachdb-software-license/); earlier versions use the Business Source License 1.1 and Apache License 2.0. Images built with this recipe include CockroachDB's `LICENSE` and `THIRD-PARTY-NOTICES.txt` in `/licenses`. See the [licensing FAQs](https://www.cockroachlabs.com/docs/stable/licensing-faqs) for details.
+CockroachDB is licensed separately. Version 24.3 and later use the [CockroachDB Software License](https://www.cockroachlabs.com/cockroachdb-software-license/); earlier versions use the Business Source License 1.1 and Apache License 2.0. Images built with this recipe include CockroachDB's `LICENSE` and `THIRD-PARTY-NOTICES.txt` in `/licenses`. See the [licensing FAQs](https://docs.cockroachlabs.com/docs/stable/licensing-faqs) for details.

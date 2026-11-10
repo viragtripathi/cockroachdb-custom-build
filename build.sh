@@ -14,7 +14,7 @@ set -euo pipefail
 if [[ -n "${CRDB_TARBALL:-}" && "$CRDB_TARBALL" != /* ]]; then CRDB_TARBALL="$PWD/$CRDB_TARBALL"; fi
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
-CRDB_VERSION="${CRDB_VERSION:-v26.2.11}"
+CRDB_VERSION="${CRDB_VERSION:-v26.3.5}"
 BUILD_MODE="${BUILD_MODE:-release}"
 RUNTIME_BASE_IMAGE="${RUNTIME_BASE_IMAGE:-registry.access.redhat.com/ubi10/ubi-minimal:latest}"
 IMAGE="${IMAGE:-crdb-runtime:${CRDB_VERSION//\//-}}"
@@ -31,6 +31,7 @@ WITH_UI="${WITH_UI:-1}"
 BUILDER_BASE_IMAGE="${BUILDER_BASE_IMAGE:-docker.io/library/ubuntu:24.04}"
 BAZEL_CACHE_VOLUME="${BAZEL_CACHE_VOLUME-crdb-bazel-cache}" # set to "" to disable the cache
 BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS:-}"
+BAZEL_STORAGE_ACCESS_TOKEN="${BAZEL_STORAGE_ACCESS_TOKEN:-}" # source mode, v26.3 and later
 
 log() { printf '==> %s\n' "$*"; }
 die() {
@@ -57,7 +58,7 @@ done
 [[ "$SMOKE_TEST" == 0 || "$SMOKE_TEST" == 1 || "$SMOKE_TEST" == auto ]] ||
   die "SMOKE_TEST must be 0, 1 or auto, not '$SMOKE_TEST'"
 if [[ "$BUILD_MODE" == release ]] && ! is_release_tag "$CRDB_VERSION"; then
-  die "BUILD_MODE=release needs a release tag such as v26.2.11, not '$CRDB_VERSION'"
+  die "BUILD_MODE=release needs a release tag such as v26.3.5, not '$CRDB_VERSION'"
 fi
 
 if [[ -z "${CONTAINER_CLI:-}" ]]; then
@@ -111,7 +112,7 @@ stage_release() {
       if ! curl -fSL --retry 3 --netrc-optional -o ".downloads/$f.part" "$CRDB_DOWNLOAD_URL/$f"; then
         rm -f ".downloads/$f.part"
         die "could not download $(redact "$CRDB_DOWNLOAD_URL")/$f. Check CRDB_VERSION" \
-          "(release tags look like v26.2.11) and your network or proxy settings."
+          "(release tags look like v26.3.5) and your network or proxy settings."
       fi
       mv ".downloads/$f.part" ".downloads/$f"
     done
@@ -199,6 +200,17 @@ stage_source() {
       "The CockroachDB source repository is private: you need read access and git" \
       "credentials (for example 'gh auth login'). Without access, use BUILD_MODE=release."
 
+  # Releases made after the repository went private (v26.3 and later) fetch
+  # their Go dependencies from a private mirror, through a Bazel credential
+  # helper that reads BAZEL_STORAGE_ACCESS_TOKEN (its automation mode).
+  if grep -q "credential_helper=storage.googleapis.com" cockroach/.bazelrc 2>/dev/null &&
+    [[ -z "$BAZEL_STORAGE_ACCESS_TOKEN" ]]; then
+    die "CockroachDB $CRDB_VERSION downloads its Go dependencies from Cockroach Labs' private" \
+      "mirror. Set BAZEL_STORAGE_ACCESS_TOKEN to a Google Cloud access token that can read it" \
+      "(for example from 'gcloud auth application-default print-access-token'), or use" \
+      "BUILD_MODE=release."
+  fi
+
   log "Building the builder image for linux/$HOST_ARCH (it cross-compiles to linux/$TARGET_ARCH)"
   ctx="$(mktemp -d)"
   "$CONTAINER_CLI" build --platform "linux/$HOST_ARCH" -f Dockerfile.builder \
@@ -210,6 +222,11 @@ stage_source() {
     -e "BAZEL_CONFIG=$config" -e "STAMP=$stamp" -e "TARGET=$target" -e "BINARY=$binary"
     -e "BAZEL_EXTRA_FLAGS=$BAZEL_EXTRA_FLAGS")
   if [[ -n "$BAZEL_CACHE_VOLUME" ]]; then run+=(-v "$BAZEL_CACHE_VOLUME:/home/builder/.cache"); fi
+  # Passed by name only, so the token never appears in a command line.
+  if [[ -n "$BAZEL_STORAGE_ACCESS_TOKEN" ]]; then
+    export BAZEL_STORAGE_ACCESS_TOKEN
+    run+=(-e BAZEL_STORAGE_ACCESS_TOKEN)
+  fi
   run+=(crdb-builder:local bash -c "$SOURCE_BUILD_SCRIPT")
 
   log "Compiling CockroachDB for linux/$TARGET_ARCH (a first build takes 10 minutes or more)"
