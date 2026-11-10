@@ -4,7 +4,7 @@
 #
 #   docker build --pull --no-cache --platform linux/amd64 \
 #     --build-arg RUNTIME_BASE_IMAGE=<your approved base image> \
-#     -f Dockerfile -t crdb-runtime:v26.2.11 out/
+#     -f Dockerfile -t crdb-runtime:v26.3.5 out/
 #
 # Build context (out/):
 #   cockroach                   CockroachDB binary
