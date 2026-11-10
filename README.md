@@ -11,8 +11,8 @@ Rebuilding on a current base fixes those, and that's what this recipe does:
 - The binary is the official release tarball from binaries.cockroachdb.com, checked against its SHA-256 checksum. Building from source is optional.
 - The base can be any glibc image: Red Hat UBI 10 or 9, Amazon Linux 2023, Rocky or AlmaLinux, Debian or Ubuntu, or your organization's approved image from an internal registry.
 - Every available OS update is installed during the build. That includes Amazon Linux 2023, where a plain `dnf upgrade` on an older base installs nothing.
-- The image is a drop-in replacement for the official one: same file layout, same entrypoint arguments, but running as non-root UID 10001. The CockroachDB Helm chart, the Operator and existing manifests keep working.
-- `smoke-test.sh` starts the image and tests SQL, spatial functions, time zones and the Helm entrypoint. `scan.sh` fails if any OS package has a fix available.
+- The image has the same file layout and entrypoint arguments as the official one, but runs as non-root UID 10001. The CockroachDB Helm chart and Operator work with it unchanged; for your own manifests, see [Moving from the official image](#moving-from-the-official-image).
+- `smoke-test.sh` starts the image and tests SQL, spatial functions, time zones, the Helm entrypoint and file permissions. `scan.sh` fails if any OS package has a fix available.
 
 ## Disclaimer
 
@@ -38,7 +38,9 @@ cd cockroachdb-custom-build
 TARGET_ARCH=amd64 RUNTIME_BASE_IMAGE=registry.example.com/approved/base:latest ./build.sh
 ```
 
-`build.sh` downloads and verifies the release, builds the image, and runs `smoke-test.sh` against it when the image matches the machine's architecture. A release build usually takes a minute or two.
+`build.sh` downloads and verifies the release, builds the image, and runs `smoke-test.sh` against it when the image matches the machine's architecture. The image only gets its name if the smoke test passes. A release build usually takes a minute or two.
+
+Building for the other architecture (for example amd64 on an arm64 machine) runs the base image's package manager under emulation. Docker Desktop and Podman on macOS handle that out of the box. On Linux, register QEMU first, for example with `docker run --privileged --rm tonistiigi/binfmt --install all` or the `qemu-user-static` package.
 
 ```bash
 ./scan.sh crdb-runtime:v26.2.11      # exits 1 if an OS package has a fix available
@@ -77,10 +79,12 @@ Any glibc-based image with `microdnf`, `dnf`, `yum` or `apt-get` works. Each of 
 | Red Hat UBI 10 minimal (default) | `registry.access.redhat.com/ubi10/ubi-minimal` | Same base as the official v26.2 images. On x86_64 it needs an x86-64-v3 CPU; see [Troubleshooting](#troubleshooting). |
 | Red Hat UBI 9 minimal | `registry.access.redhat.com/ubi9/ubi-minimal` | Base of the official v25.x images. Runs on older x86_64 CPUs. Carries more findings Red Hat has not fixed. |
 | Amazon Linux 2023 | `public.ecr.aws/amazonlinux/amazonlinux:2023-minimal` or `:2023` | Updates come from the newest Amazon Linux 2023 release (`--releasever=latest`). |
-| Rocky Linux 9, AlmaLinux 9 minimal | `rockylinux/rockylinux:9-minimal`, `almalinux/9-minimal` | RHEL 9 rebuilds. |
-| Debian 13, Ubuntu 24.04 | `debian:trixie-slim`, `ubuntu:24.04` | Updates via `apt-get upgrade`, including Ubuntu's phased updates. |
-| Amazon Linux 2 | `amazonlinux:2` | Supported, but prefer Amazon Linux 2023 for new images. |
+| Rocky Linux 9, AlmaLinux 9 minimal | `docker.io/rockylinux/rockylinux:9-minimal`, `docker.io/almalinux/9-minimal` | RHEL 9 rebuilds. |
+| Debian 13, Ubuntu 24.04 | `docker.io/library/debian:trixie-slim`, `docker.io/library/ubuntu:24.04` | Updates via `apt-get upgrade --with-new-pkgs`, including Ubuntu's phased updates. |
+| Amazon Linux 2 | `docker.io/library/amazonlinux:2` | Builds, but Amazon Linux 2 reached end of support on 2026-06-30. Use Amazon Linux 2023. |
 | Your approved image | `registry.example.com/approved/base:tag` | Mirror it in your registry and set `RUNTIME_BASE_IMAGE`. |
+
+Use fully qualified image names as shown: Podman on RHEL and Fedora refuses short names such as `ubuntu:24.04` when it can't prompt.
 
 Alpine is not supported: the CockroachDB binary needs glibc 2.17 or newer and Alpine uses musl.
 
@@ -88,17 +92,17 @@ If your platform team already ships fully patched base images and doesn't want p
 
 ## Configuration
 
-Everything is set through environment variables:
+Everything is set through environment variables. On/off settings take `0` or `1`; anything else is rejected.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CRDB_VERSION` | `v26.2.11` | CockroachDB release tag. |
+| `CRDB_VERSION` | `v26.2.11` | CockroachDB release tag. Release mode needs a tag such as `v26.2.11`; source mode also accepts a branch. |
 | `RUNTIME_BASE_IMAGE` | `registry.access.redhat.com/ubi10/ubi-minimal:latest` | Base image. |
 | `TARGET_ARCH` | this machine's | `amd64` or `arm64`. |
 | `IMAGE` | `crdb-runtime:$CRDB_VERSION` | Name of the image to build. |
 | `APPLY_OS_UPDATES` | `1` | Install all available OS updates during the build. `0` keeps the base image's packages. |
 | `PULL_BASE_IMAGE` | `1` | Pull the newest base image first. Set `0` for a base image that only exists locally. |
-| `SMOKE_TEST` | `auto` | Run `smoke-test.sh` after building: `auto` (only when the image matches this machine's architecture), `1`, or `0`. |
+| `SMOKE_TEST` | `auto` | Run `smoke-test.sh` after building, and only name the image if it passes: `auto` (when the image matches this machine's architecture), `1`, or `0`. |
 | `BUILD_MODE` | `release` | `release` packages the official binary. `source` compiles it; see [Building from source](#building-from-source). |
 | `CONTAINER_CLI` | `docker`, else `podman` | Container tool. |
 | `CRDB_DOWNLOAD_URL` | `https://binaries.cockroachdb.com` | Where release tarballs are downloaded from. Point it at an internal mirror if needed. |
@@ -110,6 +114,8 @@ Everything is set through environment variables:
 | `BAZEL_CACHE_VOLUME` | `crdb-bazel-cache` | Source mode: named volume that keeps Bazel's caches between builds. Empty disables it. |
 | `BAZEL_EXTRA_FLAGS` | | Source mode: extra Bazel flags, for example `--jobs=4`. |
 
+`scan.sh` reads two settings of its own: `SEVERITY` (default: all severities) narrows which OS findings fail the scan, and `TRIVY_IMAGE` (default `docker.io/aquasec/trivy:0.76.2`) picks the scanner image. It passes any `TRIVY_*` variables on to Trivy.
+
 The [`Dockerfile`](Dockerfile) can also be used without `build.sh`: put the files listed at its top in a directory and pass that directory as the build context.
 
 ## What's in the image
@@ -118,15 +124,15 @@ The layout matches the official image:
 
 | Path | Contents |
 |---|---|
-| `/cockroach/cockroach` | CockroachDB binary. Owned by root, so the database process cannot modify it. |
+| `/cockroach/cockroach` | CockroachDB binary. It and its directory are owned by root, so the database process cannot modify or replace it. |
 | `/cockroach/cockroach.sh` | Entrypoint. |
-| `/cockroach/cockroach-data` | Default store directory. |
+| `/cockroach/cockroach-data` | Default store directory, the only path the database user can write to. |
 | `/usr/local/lib/cockroach/` | GEOS libraries for spatial features. CockroachDB looks here by default. |
 | `/licenses/` | CockroachDB `LICENSE` and `THIRD-PARTY-NOTICES.txt`. |
 
-The image adds the same packages as the official one (`ca-certificates`, `tzdata`, `hostname`, `tar`, `gzip`, `xz`), applies all OS updates, uses `/cockroach` as the working directory, and exposes ports 26257 and 8080.
+The image adds the same packages as the official one (`ca-certificates`, `tzdata`, `hostname`, `tar`, `gzip`, `xz`) plus `bash` for the Operator, applies all OS updates, uses `/cockroach` as the working directory, and exposes ports 26257 and 8080.
 
-It runs as UID 10001 with group 0. The numeric `USER` lets Kubernetes enforce `runAsNonRoot`. `/cockroach` is writable by group 0, so the image also runs under another UID, such as `runAsUser: 1000` in the Helm chart or an arbitrary UID on OpenShift.
+It runs as UID 10001 with group 0. The numeric `USER` lets Kubernetes enforce `runAsNonRoot`. The store directory is writable by group 0, so the image also runs under another UID, such as `runAsUser: 1000` in the Helm chart or an arbitrary UID on OpenShift.
 
 The entrypoint accepts the same arguments as the official image:
 
@@ -138,12 +144,20 @@ The entrypoint accepts the same arguments as the official image:
 
 If `COCKROACH_ARGS` is set, it replaces the arguments. One thing is left out: the official image's first-start helper for `start-single-node`, which generates certificates and reads `COCKROACH_DATABASE`, `COCKROACH_USER`, `COCKROACH_PASSWORD` and `/docker-entrypoint-initdb.d`. Use `--insecure` for local testing, or mount certificates.
 
+## Moving from the official image
+
+The official image runs as root by default; this one doesn't. The CockroachDB Helm chart and Operator already set a pod security context, so they need no changes. If you run CockroachDB from your own manifests or compose files, check these before switching an existing cluster:
+
+- The data volume must be writable by the pod's user. Setting `securityContext.fsGroup` (any group ID) makes Kubernetes give the volume to that group and add the group to the pod's user. Data written by the official image is owned by root, so for an existing volume use `fsGroup`, or `chown` it once with an init container.
+- CockroachDB only accepts a group-readable key file if root owns it and its group is the process's primary group. For keys mounted from a Secret, either set `runAsGroup` to the same ID as `fsGroup` and use `defaultMode: 0440`, or copy the keys into an `emptyDir` with an init container that runs as the pod's user and sets mode 0400. The Helm chart does the latter.
+- To keep the old behavior while you migrate, you can run the image as root with `runAsUser: 0`, at the cost of the non-root default.
+
 ## Keeping the image clean
 
 Findings come back as new CVEs are published, so a clean scan today won't stay clean. Plan to rebuild:
 
 1. Rebuild on a schedule (weekly is a reasonable default) and whenever CockroachDB publishes a patch release for your version.
-2. Gate the push on `./scan.sh`, or on your own scanner. `scan.sh` exits 1 when an OS package has a fix available.
+2. Gate the push on `./scan.sh`, or on your own scanner. `scan.sh` exits 1 when an OS package has a fix available, at any severity, and also when Trivy can't identify the image's OS.
 3. Roll out the new image like any CockroachDB patch upgrade, with a rolling restart.
 
 A scheduled GitHub Actions job, for example:
@@ -155,16 +169,18 @@ on:
 jobs:
   image:
     runs-on: ubuntu-latest
+    env:
+      CRDB_VERSION: v26.2.11
+      IMAGE: registry.example.com/cockroachdb:v26.2.11
     steps:
       - uses: actions/checkout@v7
+      # Log in to your registry first if the base image is private.
       - run: ./build.sh
         env:
           TARGET_ARCH: amd64
           RUNTIME_BASE_IMAGE: registry.example.com/approved/base:latest
-          IMAGE: registry.example.com/cockroachdb:v26.2.11
-      - run: ./scan.sh registry.example.com/cockroachdb:v26.2.11
-      # log in to your registry here, then:
-      - run: docker push registry.example.com/cockroachdb:v26.2.11
+      - run: ./scan.sh "$IMAGE"
+      - run: docker push "$IMAGE"
 ```
 
 ## Restricted networks
@@ -186,18 +202,20 @@ curl -fLO https://binaries.cockroachdb.com/cockroach-v26.2.11.linux-amd64.tgz.sh
 
 # Copy both files to the build host, then
 CRDB_TARBALL=./cockroach-v26.2.11.linux-amd64.tgz TARGET_ARCH=amd64 \
-  RUNTIME_BASE_IMAGE=registry.internal/approved/base:latest ./build.sh
+  RUNTIME_BASE_IMAGE=registry.example.com/approved/base:latest ./build.sh
 ```
 
-For a stronger guarantee than a checksum file that travels with the tarball, set `CRDB_SHA256` to a value you obtained separately.
+`build.sh` checks that the tarball is the release named by `CRDB_VERSION` and `TARGET_ARCH`, not just that it matches its checksum file. For a stronger guarantee than a checksum file that travels with the tarball, set `CRDB_SHA256` to a value you obtained separately.
 
-`scan.sh` runs the `aquasec/trivy` image unless `trivy` is installed. Set `TRIVY_IMAGE` to use a mirrored copy.
+Behind a proxy, `curl` reads `HTTPS_PROXY`, and the image build uses your container engine's proxy settings (for Docker, `~/.docker/config.json`). If `CRDB_DOWNLOAD_URL` contains credentials, `build.sh` masks them in its messages; a `~/.netrc` file keeps them out of the environment entirely.
+
+`scan.sh` runs the Trivy image unless `trivy` is installed. Set `TRIVY_IMAGE` to a mirrored copy, and `TRIVY_DB_REPOSITORY` to a mirror of the vulnerability database.
 
 ## Building from source
 
 `BUILD_MODE=source` compiles CockroachDB with the toolchain and flags Cockroach Labs uses for release builds:
 
-- Bazel downloads hermetic cross-compilers, so any amd64 or arm64 host can build either architecture. An Apple Silicon Mac builds production x86_64 images without emulation.
+- Bazel downloads hermetic cross-compilers, so any amd64 or arm64 host can compile either architecture. An Apple Silicon Mac compiles production x86_64 binaries without emulation; only the runtime image's package step runs emulated.
 - Optimized, profile-guided build, with the C dependencies (GEOS, PROJ, krb5, jemalloc) compiled from source.
 - Stamped as a release build of the tag, so `cockroach version` reports `v26.2.11` and `Build Type: release`. The build channel is `source-build`, which keeps custom binaries out of Cockroach Labs' crash reporting.
 
@@ -215,7 +233,9 @@ On that VM the compile took about 10 minutes (arm64 host, amd64 target), plus th
 
 ## Troubleshooting
 
-`exec format error` when the container starts means the image was built for a different architecture than the node. Build with `TARGET_ARCH=amd64` for x86_64 nodes.
+`exec format error` when the container starts means the image was built for a different architecture than the node. Build with `TARGET_ARCH=amd64` for x86_64 nodes. The same error during a cross-architecture build means the host has no emulation set up; see [Quick start](#quick-start).
+
+If the build succeeds but the smoke test reports `No such image`, Docker is using a `docker-container` buildx builder, which doesn't load images into the local store. Switch back with `docker buildx use default`.
 
 `Fatal glibc error: CPU does not support x86-64-v3` comes from UBI 10, which needs an x86-64-v3 CPU (AVX2, BMI2, FMA and others). Older CPUs don't qualify, and neither do VMs with a masked CPU model, such as VMware EVC baselines, the default Proxmox CPU type or Hyper-V compatibility mode. Switch the base to UBI 9 or Amazon Linux 2023, or expose the host CPU to the VM.
 

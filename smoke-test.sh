@@ -87,6 +87,15 @@ expect "GEOS libraries in /usr/local/lib/cockroach" "" \
   in_image 'test -s /usr/local/lib/cockroach/libgeos.so && test -s /usr/local/lib/cockroach/libgeos_c.so'
 expect "license files in /licenses" "" \
   in_image 'test -s /licenses/LICENSE && test -s /licenses/THIRD-PARTY-NOTICES.txt'
+expect "database user cannot replace the binary or entrypoint" "" \
+  in_image '! mv /cockroach/cockroach /cockroach/moved 2>/dev/null && ! touch /cockroach/new 2>/dev/null'
+# 1000 is the Helm chart's runAsUser; 54321 stands in for an arbitrary OpenShift
+# UID (rootless Podman cannot run UIDs above 65535, such as OpenShift's ranges).
+for uid in 1000 54321; do
+  expect "store directory writable as UID $uid in group 0 (Helm chart, OpenShift)" "" \
+    run --user "$uid:0" --entrypoint /bin/sh "$IMAGE" -ec \
+    'touch /cockroach/cockroach-data/.probe && rm /cockroach/cockroach-data/.probe'
+done
 
 echo "Running node"
 "$CLI" run -d --name "$NAME" --platform "$platform" "$IMAGE" \
